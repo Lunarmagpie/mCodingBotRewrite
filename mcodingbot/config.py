@@ -1,51 +1,53 @@
 import inspect
 import json
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Any, Dict, cast
+import dataclasses
+import pathlib
+import typing as t
 
 _ALWAYS_SAVE = ["discord_token"]
+_CONFIG_PATH = "config.json"
 
-
-@dataclass
+@dataclasses.dataclass
 class Config:
     discord_token: str = "DISCORD_TOKEN"
 
     def save(self) -> None:
-        pth = Path("config.json")
+        pth = pathlib.Path(_CONFIG_PATH)
 
-        dct = asdict(self)
-        tosave: Dict[str, Any] = {}
-        defaults = self.__class__()
+        dct = dataclasses.asdict(self)
+        to_save: t.Dict[str, t.Any] = {}
+        defaults = type(self)
+
         for k, v in dct.items():
-            if k not in _ALWAYS_SAVE and getattr(defaults, k) == v:
-                continue
-
-            tosave[k] = v
+            if k in _ALWAYS_SAVE or getattr(defaults, k) != v:
+                to_save[k] = v
 
         with pth.open("w+") as f:
-            f.write(json.dumps(tosave, indent=4))
+            f.write(json.dumps(to_save, indent=4))
 
     @classmethod
     def load(cls) -> "Config":
-        pth = Path("config.json")
+        pth = pathlib.Path(_CONFIG_PATH)
 
         if not pth.exists():
-            c = Config()
-        else:
-            keys = set(inspect.signature(Config).parameters)
-            with pth.open("r") as f:
-                c = Config(
-                    **{
-                        k: v
-                        for k, v in cast(
-                            "Dict[Any, Any]", json.loads(f.read())
-                        ).items()
-                        if k in keys
-                    }
-                )
+            c = cls()
+            return
+
+        keys = set(inspect.signature(cls).parameters)
+
+        with pth.open("r") as f:
+            c = cls(
+                **{
+                    k: v
+                    for k, v in t.cast(
+                        "t.Dict[t.Any, t.Any]", json.loads(f.read())
+                    ).items()
+                    if k in keys
+                }
+            )
 
         c.save()
+
         return c
 
 
