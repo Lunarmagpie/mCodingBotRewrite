@@ -5,6 +5,7 @@ from typing import Any
 
 import aiohttp
 import crescent
+import flare
 import hikari
 
 from mcodingbot.config import CONFIG
@@ -27,6 +28,8 @@ class Bot(crescent.Bot):
                 | hikari.Intents.MESSAGE_CONTENT
             ),
         )
+
+        flare.install(self)
 
         self.plugins.load_folder("mcodingbot.plugins")
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Collection, Iterable, NamedTuple
 
 import crescent
+import flare
 import hikari
 from cachetools import TTLCache
 from crescent.ext import tasks
@@ -67,22 +68,25 @@ def filter_can_send(
     return filter(is_sendable, peps)
 
 
-def encode_dismiss_button_id(id: hikari.Snowflake) -> str:
-    return f"{DISMISS_BUTTON_ID}:{id}"
+@flare.button(label="Dismiss", style=hikari.ButtonStyle.SECONDARY)
+async def dismiss_button(
+    ctx: flare.MessageContext, author: hikari.Snowflakeish
+) -> None:
+    """
+    When a pep message is dismissed, it will not show up again until the
+    cooldown is over.
+    NOTE: If the parent message is deleted, the pep message can appear
+    immediately. I think changing this behavior would be too complex.
+    """
 
+    if ctx.user.id != author:
+        await ctx.respond(
+            "Only the person who triggered this message can dismiss it.",
+            flags=hikari.MessageFlag.EPHEMERAL,
+        )
+        return
 
-def decode_dismiss_button_id(dismiss_button_id: str) -> hikari.Snowflake:
-    return hikari.Snowflake(dismiss_button_id.split(":")[1])
-
-
-def get_dismiss_button(
-    id: hikari.Snowflake,
-) -> hikari.api.MessageActionRowBuilder:
-    action_row = plugin.app.rest.build_message_action_row()
-    action_row.add_button(
-        hikari.ButtonStyle.SECONDARY, encode_dismiss_button_id(id)
-    ).set_label("Dismiss").add_to_container()
-    return action_row
+    await ctx.message.delete()
 
 
 async def autocomplete_pep(
@@ -179,7 +183,7 @@ async def on_message(event: hikari.MessageCreateEvent) -> None:
         embed = get_peps_embed(peps)
         response = await event.message.respond(
             embed=embed,
-            component=get_dismiss_button(event.author.id),
+            component=await flare.Row(dismiss_button(event.author.id)),
             reply=True,
         )
         recent_pep_responses[event.message.id] = MessageInfo(response.id, peps)
@@ -233,7 +237,7 @@ async def on_message_edit(event: hikari.GuildMessageUpdateEvent) -> None:
         trigger_cooldowns(peps, event.channel_id)
         response = await event.message.respond(
             embed=embed,
-            component=get_dismiss_button(event.author.id),
+            component=await flare.Row(dismiss_button(event.author.id)),
             reply=True,
         )
         recent_pep_responses[event.message.id] = MessageInfo(response.id, peps)
@@ -253,31 +257,3 @@ async def on_message_delete(event: hikari.GuildMessageDeleteEvent) -> None:
                 event.channel_id, original.message
             )
             del recent_pep_responses[event.message_id]
-
-
-@plugin.include
-@crescent.event
-async def on_interaction(event: hikari.InteractionCreateEvent) -> None:
-    """
-    When a pep message is dismissed, it will not show up again until the
-    cooldown is over.
-    NOTE: If the parent message is deleted, the pep message can appear
-    immediately. I think changing this behavior would be too complex.
-    """
-    inter = event.interaction
-
-    if not (
-        isinstance(inter, hikari.ComponentInteraction)
-        and DISMISS_BUTTON_ID in inter.custom_id
-    ):
-        return
-
-    if inter.user.id != decode_dismiss_button_id(inter.custom_id):
-        await inter.create_initial_response(
-            hikari.ResponseType.MESSAGE_CREATE,
-            "Only the person who triggered this message can dismiss it.",
-            flags=hikari.MessageFlag.EPHEMERAL,
-        )
-        return
-
-    await inter.message.delete()
