@@ -78,7 +78,6 @@ async def dismiss_button(
     NOTE: If the parent message is deleted, the pep message can appear
     immediately. I think changing this behavior would be too complex.
     """
-
     if ctx.user.id != author:
         await ctx.respond(
             "Only the person who triggered this message can dismiss it.",
